@@ -35,6 +35,12 @@ export interface ExpectDef {
   envelopeStatusCode?: number;
   /** Path into the response that must be non-empty, e.g. "data.items". */
   nonEmpty?: string;
+  /**
+   * Response values that must match, e.g. { "data.status": 2 }. Compared as strings so a
+   * decimal 2 from Oracle and a JSON 2 agree. This is what lets a scenario prove an outcome
+   * — "the plan came back to Pending" — rather than merely that nothing errored.
+   */
+  equals?: Record<string, string | number>;
 }
 
 export interface StepDef {
@@ -48,6 +54,11 @@ export interface StepDef {
   expect?: ExpectDef;
   /** Skip the step unless every named variable is set (and truthy). */
   requiresVars?: string[];
+  /**
+   * Skip the step when any of these variables IS set — the inverse of requiresVars, for
+   * "only do this if an earlier step did not already find one".
+   */
+  skipIfVars?: string[];
   /** A failure here stops the scenario; otherwise the run continues. */
   critical?: boolean;
 }

@@ -220,6 +220,13 @@ export function assertExpectations(
       problems.push(`expected ${expect.nonEmpty} to be non-empty`);
     }
   }
+  for (const [path, want] of Object.entries(expect.equals ?? {})) {
+    const got = readPath(res.parsed, path);
+    // String comparison: Oracle decimals arrive as 2 or "2" depending on the field.
+    if (`${got}` !== `${want}`) {
+      problems.push(`expected ${path} to be ${want}, got ${got ?? 'nothing'}`);
+    }
+  }
 
   return problems.length
     ? { ok: false, detail: `${seen.join('; ')} (${problems.join(', ')})` }
@@ -332,6 +339,21 @@ export async function runStep(step: StepDef, vars: Vars, opts: EngineOptions): P
     };
   }
 
+  const already = (step.skipIfVars ?? []).filter((v) => {
+    const value = vars[v];
+    return value !== undefined && value !== null && value !== '';
+  });
+  if (already.length) {
+    return {
+      stepId: step.id,
+      title: step.title,
+      note: step.note,
+      outcome: 'skipped',
+      detail: `not needed — ${already.join(', ')} already found by an earlier step`,
+      startedAtIso,
+    };
+  }
+
   const blocked = opts.guard?.(step.request) ?? null;
   if (blocked) {
     return {
@@ -359,7 +381,10 @@ export async function runStep(step: StepDef, vars: Vars, opts: EngineOptions): P
   }
 
   const response = await opts.send(request);
-  const { ok, detail } = assertExpectations(step.expect, response);
+  // Expectations are templated too: "data.version": "{{approvedVersion}}" must compare against
+  // the captured value, not the literal placeholder.
+  const expected = step.expect ? (resolve(step.expect, vars) as typeof step.expect) : undefined;
+  const { ok, detail } = assertExpectations(expected, response);
 
   const captured: Record<string, unknown> = {};
   for (const [name, path] of Object.entries(step.capture ?? {})) {

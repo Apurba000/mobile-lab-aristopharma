@@ -253,8 +253,8 @@
             "mobileHeader": true,
             "bodyFrom": "visitPlanMonth",
             "bodyArgs": {
-              "year": "{{nextMonthYear}}",
-              "month": "{{nextMonth}}",
+              "year": "{{year}}",
+              "month": "{{month}}",
               "dates": 3,
               "perDate": 1,
               "pool": [
@@ -521,8 +521,8 @@
             "mobileHeader": true,
             "bodyFrom": "visitPlanMonth",
             "bodyArgs": {
-              "year": "{{nextMonthYear}}",
-              "month": "{{nextMonth}}",
+              "year": "{{year}}",
+              "month": "{{month}}",
               "dates": 2,
               "perDate": 1,
               "pool": [
@@ -554,8 +554,8 @@
             "mobileHeader": true,
             "bodyFrom": "visitPlanMonth",
             "bodyArgs": {
-              "year": "{{nextMonthYear}}",
-              "month": "{{nextMonth}}",
+              "year": "{{year}}",
+              "month": "{{month}}",
               "dates": 2,
               "perDate": 1,
               "pool": [
@@ -583,6 +583,370 @@
           },
           "expect": {
             "envelopeStatusCode": 200
+          }
+        }
+      ]
+    },
+    {
+      "id": "vp.average.amend-then-approve",
+      "module": "visit-plan",
+      "path": "average",
+      "title": "MIO amends an approved plan, AM approves the new version",
+      "description": "The loop that happens every month: a plan already exists, the MIO changes it, that returns the whole plan to Pending at a new version, and the AM approves it. Proves the version actually moved and the status actually changed, not just that nothing errored.",
+      "requires": [
+        "mio",
+        "am"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "year",
+          "label": "Plan year",
+          "type": "number",
+          "default": "{{nextMonthYear}}",
+          "hint": "field users can only plan a month later than the current one"
+        },
+        {
+          "name": "month",
+          "label": "Plan month",
+          "type": "select",
+          "default": "{{nextMonth}}",
+          "hint": "one plan per employee + month",
+          "options": [
+            {
+              "value": 1,
+              "label": "January"
+            },
+            {
+              "value": 2,
+              "label": "February"
+            },
+            {
+              "value": 3,
+              "label": "March"
+            },
+            {
+              "value": 4,
+              "label": "April"
+            },
+            {
+              "value": 5,
+              "label": "May"
+            },
+            {
+              "value": 6,
+              "label": "June"
+            },
+            {
+              "value": 7,
+              "label": "July"
+            },
+            {
+              "value": 8,
+              "label": "August"
+            },
+            {
+              "value": 9,
+              "label": "September"
+            },
+            {
+              "value": 10,
+              "label": "October"
+            },
+            {
+              "value": 11,
+              "label": "November"
+            },
+            {
+              "value": 12,
+              "label": "December"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "territories",
+          "title": "Territory picker",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "terrId": "data[0].value"
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "critical": true
+        },
+        {
+          "id": "reporting-places",
+          "title": "Approved reporting places",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/reporting-places",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "rpId": "data[0].value",
+            "rpId2": "data[1].value"
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "critical": true,
+          "note": "A second place is captured if one exists - that is what the amend adds."
+        },
+        {
+          "id": "doctors",
+          "title": "Doctors in scope",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/doctors",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data[0].value"
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "critical": true
+        },
+        {
+          "id": "chambers",
+          "title": "That doctor's chambers",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "chamberId": "data[0].value"
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "critical": true
+        },
+        {
+          "id": "find-existing",
+          "title": "Is there already a plan for this month?",
+          "note": "The scenario needs an existing plan to amend; if none is found the next step creates one.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan?year={{year}}&month={{month}}&page=1&pageSize=20",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "planId": "data.items[0].id",
+            "startVersion": "data.items[0].currentVersion"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "seed-plan",
+          "title": "No plan yet — create one to amend",
+          "note": "Skipped when the month already has a plan, so the scenario is safe to re-run.",
+          "skipIfVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/visitplan",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "visitPlanMonth",
+            "bodyArgs": {
+              "year": "{{year}}",
+              "month": "{{month}}",
+              "dates": 2,
+              "perDate": 1,
+              "pool": [
+                {
+                  "reportingPlaceId": "{{rpId}}",
+                  "doctorId": "{{doctorId}}",
+                  "chamberId": "{{chamberId}}"
+                }
+              ]
+            }
+          },
+          "capture": {
+            "planId": "data.id",
+            "startVersion": "data.currentVersion"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "approve-seed",
+          "title": "Make sure it starts Approved",
+          "note": "An amend is only interesting from an approved plan - that is what returns to Pending.",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/visitplan/{{planId}}/approval",
+            "as": "am",
+            "mobileHeader": true,
+            "body": {
+              "status": 1
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "before",
+          "title": "Read the plan before the change",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/{{planId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "beforeVersion": "data.currentVersion",
+            "beforeApproved": "data.approvedVersion",
+            "beforeVisits": "data.totalVisits"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "amend",
+          "title": "MIO amends — more dates, more visits per date",
+          "note": "A full replacement of the month, not a patch. Three dates with two visits each where the plan started with two dates and one, so both 'add' and 'update' are exercised.",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/visitplan/{{planId}}",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "visitPlanMonth",
+            "bodyArgs": {
+              "year": "{{year}}",
+              "month": "{{month}}",
+              "dates": 3,
+              "perDate": 2,
+              "pool": [
+                {
+                  "reportingPlaceId": "{{rpId}}",
+                  "doctorId": "{{doctorId}}",
+                  "chamberId": "{{chamberId}}"
+                },
+                {
+                  "reportingPlaceId": "{{rpId2}}",
+                  "doctorId": "{{doctorId}}",
+                  "chamberId": "{{chamberId}}"
+                }
+              ]
+            }
+          },
+          "capture": {
+            "amendedVersion": "data.currentVersion",
+            "amendedVisits": "data.totalVisits"
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.status": 2
+            }
+          },
+          "critical": true
+        },
+        {
+          "id": "bydate-unchanged",
+          "title": "by-date still serves the OLD approved version",
+          "note": "The amend is pending, so the field force must not see it yet.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/by-date?date={{firstOfMonth}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.version": "{{beforeApproved}}"
+            }
+          }
+        },
+        {
+          "id": "am-inbox",
+          "title": "It is waiting in the AM's inbox",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan?pendingForMe=true&page=1&pageSize=20",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "am-approves",
+          "title": "AM approves the amended version",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/visitplan/{{planId}}/approval",
+            "as": "am",
+            "mobileHeader": true,
+            "body": {
+              "status": 1
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.status": 1,
+              "data.approvedVersion": "{{amendedVersion}}"
+            }
+          },
+          "critical": true
+        },
+        {
+          "id": "bydate-updated",
+          "title": "by-date now serves the amended version",
+          "note": "The whole point of the loop: approval is what makes an edit visible to the field.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/by-date?date={{firstOfMonth}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.version": "{{amendedVersion}}"
+            }
           }
         }
       ]
