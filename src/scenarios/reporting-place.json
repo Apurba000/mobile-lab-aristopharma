@@ -1,0 +1,471 @@
+{
+  "module": "reporting-place",
+  "label": "17 · Reporting Place",
+  "surface": [
+    {
+      "endpoint": "GET /api/v1/app/reportingplace",
+      "expect": [
+        200,
+        401
+      ],
+      "note": "approved places"
+    },
+    {
+      "endpoint": "GET /api/v1/app/reportingplace/territories",
+      "expect": [
+        200,
+        401
+      ]
+    },
+    {
+      "endpoint": "GET /api/v1/app/reportingplace/request",
+      "expect": [
+        200,
+        401
+      ],
+      "note": "own requests + AM inbox"
+    },
+    {
+      "endpoint": "GET /api/v1/app/reportingplace/Master/{id}",
+      "expect": [
+        200,
+        401,
+        404
+      ]
+    },
+    {
+      "endpoint": "GET /api/v1/app/reportingplace/Request/{id}",
+      "expect": [
+        200,
+        401,
+        404
+      ]
+    },
+    {
+      "endpoint": "POST /api/v1/app/reportingplace/request",
+      "expect": [
+        200,
+        400,
+        401
+      ]
+    },
+    {
+      "endpoint": "PUT /api/v1/app/reportingplace/request/{id}",
+      "expect": [
+        200,
+        400,
+        401,
+        403
+      ],
+      "note": "403 when the request is not yours"
+    },
+    {
+      "endpoint": "PUT /api/v1/app/reportingplace/request/{id}/approval",
+      "expect": [
+        200,
+        400,
+        401,
+        403
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "rp.happy.submit-approve",
+      "module": "reporting-place",
+      "path": "happy",
+      "title": "Submit a place, AM approves it",
+      "description": "The full field-to-manager chain: pick a territory, submit a new reporting place, see it in your own requests, then approve it as the line manager and confirm it appears in the approved list.",
+      "requires": [
+        "mio",
+        "am"
+      ],
+      "writes": true,
+      "steps": [
+        {
+          "id": "territories",
+          "title": "Territory picker",
+          "note": "Scoped to the logged-in employee by the same hierarchy rules as Doctor.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "terrId": "data[0].value"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "critical": true
+        },
+        {
+          "id": "approved-list",
+          "title": "Approved places already in the territory",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace?terrId={{terrId}}&page=1&pageSize=5",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "create",
+          "title": "Submit a new reporting place",
+          "note": "Name is stamped with the run time so repeated runs never collide.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/reportingplace/request",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "reportingPlaceRequest",
+            "bodyArgs": {
+              "terrId": "{{terrId}}"
+            }
+          },
+          "capture": {
+            "rpRequestId": "data.id",
+            "rpStatus": "data.status"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "my-requests",
+          "title": "It appears in my requests",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/request?page=1&pageSize=20",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.items"
+          }
+        },
+        {
+          "id": "detail",
+          "title": "Open the request",
+          "requiresVars": [
+            "rpRequestId"
+          ],
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/Request/{{rpRequestId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "am-inbox",
+          "title": "AM inbox — pending for me",
+          "note": "If this is empty the PGroup has no APPROVAL_PROCESS row and the request auto-approved instead.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/request?pendingForMe=true&page=1&pageSize=20",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "approve",
+          "title": "AM approves",
+          "requiresVars": [
+            "rpRequestId"
+          ],
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/reportingplace/request/{{rpRequestId}}/approval",
+            "as": "am",
+            "mobileHeader": true,
+            "body": {
+              "status": 1
+            }
+          },
+          "capture": {
+            "approvedStatus": "data.status"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "shows-approved",
+          "title": "It is now in the approved list",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace?terrId={{terrId}}&page=1&pageSize=50",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.items"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rp.average.reject-then-resubmit",
+      "module": "reporting-place",
+      "path": "average",
+      "title": "Rejected, then edited and resubmitted",
+      "description": "The realistic middle case: a manager rejects with a reason, the field user fixes it, and it goes back to Pending with a fresh approval row.",
+      "requires": [
+        "mio",
+        "am"
+      ],
+      "writes": true,
+      "steps": [
+        {
+          "id": "territories",
+          "title": "Territory picker",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "terrId": "data[0].value"
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "critical": true
+        },
+        {
+          "id": "create",
+          "title": "Submit a place",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/reportingplace/request",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "reportingPlaceRequest",
+            "bodyArgs": {
+              "terrId": "{{terrId}}"
+            }
+          },
+          "capture": {
+            "rpRequestId": "data.id"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "reject",
+          "title": "AM rejects with a reason",
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/reportingplace/request/{{rpRequestId}}/approval",
+            "as": "am",
+            "mobileHeader": true,
+            "body": {
+              "status": 3,
+              "rejectReason": "Mobile Lab — rejected on purpose"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "edit",
+          "title": "Field user edits the rejected request",
+          "note": "A rejected request is editable and resubmits as Pending — the reject reason is cleared.",
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/reportingplace/request/{{rpRequestId}}",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "reportingPlaceRequest",
+            "bodyArgs": {
+              "terrId": "{{terrId}}"
+            }
+          },
+          "capture": {
+            "afterEditStatus": "data.status"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        }
+      ]
+    },
+    {
+      "id": "rp.worst.status-matrix",
+      "module": "reporting-place",
+      "path": "worst",
+      "title": "Error matrix — 400 / 401 / 404",
+      "description": "Every failure mode the endpoint should produce, asserted on BOTH the transport status and the envelope code. With Platform: Mobile the transport is 200 throughout — that is the behaviour under test, not a bug.",
+      "requires": [
+        "mio"
+      ],
+      "writes": false,
+      "steps": [
+        {
+          "id": "401-no-token",
+          "title": "401 — no token (Mobile)",
+          "note": "Transport 200, envelope 401. This is the trap that makes mobile errors look like successes.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/territories",
+            "as": "none",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "Error",
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "401-no-token-no-header",
+          "title": "401 — no token, no Platform header",
+          "note": "Same call without the header: now the transport carries the real 401.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/territories",
+            "as": "none"
+          },
+          "expect": {
+            "httpStatus": 401,
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "401-garbage",
+          "title": "401 — malformed bearer token",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/territories",
+            "as": "garbage",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "404-request",
+          "title": "404 — unknown request id",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/Request/999999999",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "Error",
+            "envelopeStatusCode": 404
+          }
+        },
+        {
+          "id": "404-master",
+          "title": "404 — unknown master id",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/reportingplace/Master/999999999",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 404
+          }
+        },
+        {
+          "id": "400-no-name",
+          "title": "400 — name missing",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/reportingplace/request",
+            "as": "mio",
+            "mobileHeader": true,
+            "body": {
+              "name": "",
+              "address": "x",
+              "latitude": 23.81,
+              "longitude": 90.41,
+              "terrId": "X"
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "ValidationError",
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "400-bad-latitude",
+          "title": "400 — latitude out of range",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/reportingplace/request",
+            "as": "mio",
+            "mobileHeader": true,
+            "body": {
+              "name": "Bad lat",
+              "address": "x",
+              "latitude": 999,
+              "longitude": 90.41,
+              "terrId": "X"
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "ValidationError",
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "400-bad-approval-status",
+          "title": "400 — approval status must be 1 or 3",
+          "note": "Status 2 (Pending) is not a decision, so it must be refused.",
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/reportingplace/request/1/approval",
+            "as": "mio",
+            "mobileHeader": true,
+            "body": {
+              "status": 2
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "ValidationError",
+            "envelopeStatusCode": 400
+          }
+        }
+      ]
+    }
+  ]
+}

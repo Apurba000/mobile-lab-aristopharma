@@ -1,0 +1,8 @@
+# Real environment config holds internal base URLs - keep it local.
+src/environments.json
+
+node_modules/
+dist/
+out-tsc/
+.angular/
+*.log

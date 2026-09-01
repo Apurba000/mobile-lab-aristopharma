@@ -1,0 +1,28 @@
+{
+  "name": "aristopharma-msfa-mobilelab",
+  "version": "1.0.0",
+  "description": "Mobile API test & debug harness for Aristopharma MSFA (api/v1/app/*)",
+  "scripts": {
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^22.0.7",
+    "@angular/compiler": "^22.0.7",
+    "@angular/core": "^22.0.7",
+    "@angular/forms": "^22.0.7",
+    "@angular/platform-browser": "^22.0.7",
+    "@angular/router": "^22.0.7",
+    "rxjs": "~7.5.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.1"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^22.0.7",
+    "@angular/cli": "^22.0.7",
+    "@angular/compiler-cli": "^22.0.7",
+    "typescript": "~6.0.3"
+  }
+}
