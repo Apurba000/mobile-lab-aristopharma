@@ -15,7 +15,6 @@ import { BodyBuilder, Vars } from './engine';
  * entries from the pool; different dates may reuse them freely.
  */
 const visitPlanMonth: BodyBuilder = (args, vars: Vars) => {
-  const terrId = String(args['terrId'] ?? vars['terrId'] ?? '');
   const year = Number(args['year'] ?? vars['year']);
   const month = Number(args['month'] ?? vars['month']);
   const dates = Number(args['dates'] ?? 3);
@@ -44,7 +43,8 @@ const visitPlanMonth: BodyBuilder = (args, vars: Vars) => {
       });
     }
   }
-  return { terrId, planYear: year, planMonth: month, dates: out };
+  // No terrId: a plan is scoped to the employee, not a territory (MSFA increment 4).
+  return { planYear: year, planMonth: month, dates: out };
 };
 
 /**

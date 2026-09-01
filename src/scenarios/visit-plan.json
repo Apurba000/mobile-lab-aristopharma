@@ -13,26 +13,25 @@
       "endpoint": "GET /api/v1/app/visitplan/reporting-places",
       "expect": [
         200,
-        400,
         401
       ],
-      "note": "approved places only"
+      "note": "terrId is an optional filter; omitting it returns the whole set"
     },
     {
       "endpoint": "GET /api/v1/app/visitplan/doctors",
       "expect": [
         200,
-        400,
         401
-      ]
+      ],
+      "note": "terrId is an optional filter; omitting it returns the whole set"
     },
     {
       "endpoint": "GET /api/v1/app/visitplan/chambers",
       "expect": [
         200,
-        400,
         401
-      ]
+      ],
+      "note": "terrId is an optional filter; omitting it returns the whole set"
     },
     {
       "endpoint": "GET /api/v1/app/visitplan",
@@ -106,15 +105,15 @@
           "name": "year",
           "label": "Plan year",
           "type": "number",
-          "default": "{{year}}",
-          "hint": "the plan's PLAN_YEAR"
+          "default": "{{nextMonthYear}}",
+          "hint": "field users can only plan a month later than the current one"
         },
         {
           "name": "month",
           "label": "Plan month",
           "type": "select",
-          "default": "{{month}}",
-          "hint": "one plan per employee + territory + month",
+          "default": "{{nextMonth}}",
+          "hint": "one plan per employee + month",
           "options": [
             {
               "value": 1,
@@ -189,11 +188,11 @@
         },
         {
           "id": "reporting-places",
-          "title": "Approved reporting places in the territory",
+          "title": "Approved reporting places across the employee's territories",
           "note": "Approved only — a pending reporting-place request cannot be planned against.",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/reporting-places?terrId={{terrId}}",
+            "path": "/api/v1/app/visitplan/reporting-places",
             "as": "mio",
             "mobileHeader": true
           },
@@ -208,10 +207,10 @@
         },
         {
           "id": "doctors",
-          "title": "Doctors in the territory",
+          "title": "Doctors across the employee's territories",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/doctors?terrId={{terrId}}",
+            "path": "/api/v1/app/visitplan/doctors",
             "as": "mio",
             "mobileHeader": true
           },
@@ -227,10 +226,10 @@
         {
           "id": "chambers",
           "title": "That doctor's chambers",
-          "note": "The chamber must belong to the chosen doctor AND sit in the plan territory.",
+          "note": "The chamber must belong to the chosen doctor AND sit in one of the employee's territories.",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}&terrId={{terrId}}",
+            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}",
             "as": "mio",
             "mobileHeader": true
           },
@@ -246,7 +245,7 @@
         {
           "id": "submit",
           "title": "Submit the month",
-          "note": "A plan is unique per employee + territory + month, so a same-month re-run correctly answers 400 — use the 'average' scenario to see that.",
+          "note": "A plan is unique per employee + month. Field users can only create a month later than the current one.",
           "request": {
             "method": "POST",
             "path": "/api/v1/app/visitplan",
@@ -254,9 +253,8 @@
             "mobileHeader": true,
             "bodyFrom": "visitPlanMonth",
             "bodyArgs": {
-              "terrId": "{{terrId}}",
-              "year": "{{year}}",
-              "month": "{{month}}",
+              "year": "{{nextMonthYear}}",
+              "month": "{{nextMonth}}",
               "dates": 3,
               "perDate": 1,
               "pool": [
@@ -362,15 +360,15 @@
           "name": "year",
           "label": "Plan year",
           "type": "number",
-          "default": "{{year}}",
-          "hint": "the plan's PLAN_YEAR"
+          "default": "{{nextMonthYear}}",
+          "hint": "field users can only plan a month later than the current one"
         },
         {
           "name": "month",
           "label": "Plan month",
           "type": "select",
-          "default": "{{month}}",
-          "hint": "one plan per employee + territory + month",
+          "default": "{{nextMonth}}",
+          "hint": "one plan per employee + month",
           "options": [
             {
               "value": 1,
@@ -463,7 +461,7 @@
           "title": "Approved reporting places",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/reporting-places?terrId={{terrId}}",
+            "path": "/api/v1/app/visitplan/reporting-places",
             "as": "mio",
             "mobileHeader": true
           },
@@ -481,7 +479,7 @@
           "title": "Doctors",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/doctors?terrId={{terrId}}",
+            "path": "/api/v1/app/visitplan/doctors",
             "as": "mio",
             "mobileHeader": true
           },
@@ -499,7 +497,7 @@
           "title": "Chambers",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}&terrId={{terrId}}",
+            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}",
             "as": "mio",
             "mobileHeader": true
           },
@@ -523,9 +521,8 @@
             "mobileHeader": true,
             "bodyFrom": "visitPlanMonth",
             "bodyArgs": {
-              "terrId": "{{terrId}}",
-              "year": "{{year}}",
-              "month": "{{month}}",
+              "year": "{{nextMonthYear}}",
+              "month": "{{nextMonth}}",
               "dates": 2,
               "perDate": 1,
               "pool": [
@@ -557,9 +554,8 @@
             "mobileHeader": true,
             "bodyFrom": "visitPlanMonth",
             "bodyArgs": {
-              "terrId": "{{terrId}}",
-              "year": "{{year}}",
-              "month": "{{month}}",
+              "year": "{{nextMonthYear}}",
+              "month": "{{nextMonth}}",
               "dates": 2,
               "perDate": 1,
               "pool": [
@@ -606,15 +602,15 @@
           "name": "year",
           "label": "Plan year",
           "type": "number",
-          "default": "{{year}}",
-          "hint": "the plan's PLAN_YEAR"
+          "default": "{{nextMonthYear}}",
+          "hint": "field users can only plan a month later than the current one"
         },
         {
           "name": "month",
           "label": "Plan month",
           "type": "select",
-          "default": "{{month}}",
-          "hint": "one plan per employee + territory + month",
+          "default": "{{nextMonth}}",
+          "hint": "one plan per employee + month",
           "options": [
             {
               "value": 1,
@@ -730,8 +726,8 @@
           }
         },
         {
-          "id": "400-terrid-missing",
-          "title": "400 — lookup without terrId",
+          "id": "200-terrid-omitted",
+          "title": "200 — reporting places with no territory filter",
           "request": {
             "method": "GET",
             "path": "/api/v1/app/visitplan/reporting-places?terrId=",
@@ -740,13 +736,14 @@
           },
           "expect": {
             "httpStatus": 200,
-            "envelopeStatus": "ValidationError",
-            "envelopeStatusCode": 400
-          }
+            "envelopeStatus": "Success",
+            "envelopeStatusCode": 200
+          },
+          "note": "terrId is optional since 2026-09-01: omitted means every territory this user covers, which for an AM is the whole area."
         },
         {
-          "id": "400-doctors-no-terrid",
-          "title": "400 — doctors without terrId",
+          "id": "200-doctors-no-terrid",
+          "title": "200 — doctors with no territory filter",
           "request": {
             "method": "GET",
             "path": "/api/v1/app/visitplan/doctors?terrId=",
@@ -755,8 +752,10 @@
           },
           "expect": {
             "httpStatus": 200,
-            "envelopeStatusCode": 400
-          }
+            "envelopeStatus": "Success",
+            "envelopeStatusCode": 200
+          },
+          "note": "terrId is optional since 2026-09-01: omitted means every territory this user covers, which for an AM is the whole area."
         },
         {
           "id": "400-month-out-of-range",
@@ -767,7 +766,6 @@
             "as": "mio",
             "mobileHeader": true,
             "body": {
-              "terrId": "X",
               "planYear": "{{year}}",
               "planMonth": 13,
               "dates": [
@@ -799,7 +797,6 @@
             "as": "mio",
             "mobileHeader": true,
             "body": {
-              "terrId": "X",
               "planYear": "{{year}}",
               "planMonth": "{{month}}",
               "dates": []
@@ -819,7 +816,6 @@
             "as": "mio",
             "mobileHeader": true,
             "body": {
-              "terrId": "X",
               "planYear": "{{year}}",
               "planMonth": "{{month}}",
               "dates": [
@@ -850,7 +846,6 @@
             "as": "mio",
             "mobileHeader": true,
             "body": {
-              "terrId": "X",
               "planYear": "{{year}}",
               "planMonth": "{{month}}",
               "dates": [
