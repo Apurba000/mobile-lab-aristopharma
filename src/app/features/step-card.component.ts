@@ -107,6 +107,13 @@ export class StepCardComponent {
   @Input() r!: StepResult;
   open = false;
 
+  /** Opens the card without collapsing one the user has opened themselves. */
+  @Input() set startOpen(value: boolean) {
+    if (value) {
+      this.open = true;
+    }
+  }
+
   hasCaptured(): boolean {
     return !!this.r.captured && Object.keys(this.r.captured).length > 0;
   }

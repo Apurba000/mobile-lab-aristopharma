@@ -94,6 +94,12 @@ import { resolve, seedVariables } from '../core/engine';
                 {{ running ? 'Running…' : 'Run scenario' }}
               </button>
 
+              <label class="stepmode" [class.on]="stepMode">
+                <input type="checkbox" [(ngModel)]="stepMode" [disabled]="running" />
+                Step through
+                <span class="tiny muted">pause after each step</span>
+              </label>
+
               <div class="tally" *ngIf="live">
                 <span class="pill pass">{{ live.passed }} passed</span>
                 <span class="pill fail" *ngIf="live.failed">{{ live.failed }} failed</span>
@@ -107,6 +113,18 @@ import { resolve, seedVariables } from '../core/engine';
             <div class="progress" *ngIf="running">
               <div class="fill" [style.width.%]="progressPct()"></div>
             </div>
+
+            <div class="paused" *ngIf="awaitingStep">
+              <div>
+                <strong>Paused after step {{ live?.steps?.length }} of {{ s.steps.length }}</strong>
+                <span class="tiny muted">
+                  — read the request and response below, then continue
+                </span>
+              </div>
+              <button class="primary" (click)="nextStep()">Next step</button>
+              <button (click)="runToEnd()">Run to end</button>
+              <button class="danger" (click)="stopRun()">Stop</button>
+            </div>
           </div>
 
           <div class="card" *ngIf="live">
@@ -114,7 +132,10 @@ import { resolve, seedVariables } from '../core/engine';
               <h2>Steps</h2>
               <span class="sub tiny muted">click any step for the raw request and response</span>
             </div>
-            <lab-step-card *ngFor="let r of live.steps" [r]="r"></lab-step-card>
+            <lab-step-card
+              *ngFor="let r of live.steps"
+              [r]="r"
+              [startOpen]="stepMode"></lab-step-card>
           </div>
 
           <div class="card" *ngIf="mutableSteps().length">
@@ -213,6 +234,38 @@ import { resolve, seedVariables } from '../core/engine';
         overflow: hidden;
       }
       .progress .fill { height: 100%; background: var(--brand); transition: width 0.2s; }
+
+      .stepmode {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        padding: 6px 11px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        font-size: 12.5px;
+        font-weight: 550;
+        color: var(--ink-2);
+        text-transform: none;
+        letter-spacing: 0;
+        cursor: pointer;
+      }
+      .stepmode.on { border-color: var(--brand); background: var(--brand-wash); color: var(--brand-ink); }
+      .stepmode input { width: auto; margin: 0; }
+
+      .paused {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        padding: 10px 12px;
+        background: var(--warn-wash);
+        border: 1px solid #fedf89;
+        border-radius: var(--radius-sm);
+        color: var(--warn);
+      }
+      .paused > div { flex: 1 1 auto; }
       .why { margin: 8px 0 0; }
     `,
   ],
@@ -224,6 +277,12 @@ export class ScenarioRunnerComponent implements OnInit, OnDestroy {
   running = false;
 
   inputValues: Record<string, any> = {};
+
+  /** Hold the run after each step so a human can actually read what happened. */
+  stepMode = false;
+  awaitingStep = false;
+  private resumeStep: (() => void) | null = null;
+  private stopRequested = false;
   catalogue: MutatorDef[] = [];
   mutStepId = '';
   mutIndex = 0;
@@ -303,6 +362,8 @@ export class ScenarioRunnerComponent implements OnInit, OnDestroy {
   async run(s: ScenarioDef): Promise<void> {
     this.running = true;
     this.live = null;
+    this.stopRequested = false;
+    this.awaitingStep = false;
     this.tick();
     try {
       this.live = await this.runner.run(
@@ -312,7 +373,9 @@ export class ScenarioRunnerComponent implements OnInit, OnDestroy {
           this.live = { ...run, steps: [...run.steps] };
           this.tick();
         },
-        this.coercedInputs(s)
+        this.coercedInputs(s),
+        () => this.waitForHuman(),
+        () => this.stopRequested
       );
     } catch (e) {
       console.error('scenario run failed', e);
@@ -321,6 +384,43 @@ export class ScenarioRunnerComponent implements OnInit, OnDestroy {
       this.running = false;
       this.tick();
     }
+  }
+
+  /**
+   * Resolves when the operator asks for the next step. Returns immediately when step mode is
+   * off, so the normal run is unaffected.
+   */
+  private waitForHuman(): Promise<void> {
+    if (!this.stepMode || this.stopRequested) {
+      return Promise.resolve();
+    }
+    this.awaitingStep = true;
+    this.tick();
+    return new Promise<void>((resolve) => {
+      this.resumeStep = () => {
+        this.awaitingStep = false;
+        this.resumeStep = null;
+        this.tick();
+        resolve();
+      };
+    });
+  }
+
+  nextStep(): void {
+    this.resumeStep?.();
+  }
+
+  /** Drop out of step mode and let the remaining steps run without pausing. */
+  runToEnd(): void {
+    this.stepMode = false;
+    this.resumeStep?.();
+  }
+
+  /** Abandon the rest of the run; remaining steps are recorded as skipped. */
+  stopRun(): void {
+    this.stopRequested = true;
+    this.stepMode = false;
+    this.resumeStep?.();
   }
 
   mutableSteps(): StepDef[] {

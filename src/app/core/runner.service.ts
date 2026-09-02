@@ -106,10 +106,14 @@ export class RunnerService {
 
   private options(
     onStep?: (r: StepResult, run: RunResult) => void,
-    initialVars?: Vars
+    initialVars?: Vars,
+    pause?: (r: StepResult, run: RunResult) => Promise<void>,
+    shouldStop?: () => boolean
   ): EngineOptions {
     return {
       initialVars,
+      pause,
+      shouldStop,
       baseUrl: this.env.baseUrl,
       environment: this.env.current?.key ?? 'unknown',
       tokens: this.auth.tokens,
@@ -213,13 +217,18 @@ export class RunnerService {
   async run(
     scenario: ScenarioDef,
     onStep?: (r: StepResult, run: RunResult) => void,
-    initialVars?: Vars
+    initialVars?: Vars,
+    pause?: (r: StepResult, run: RunResult) => Promise<void>,
+    shouldStop?: () => boolean
   ): Promise<RunResult> {
     const wrapped = (r: StepResult, run: RunResult) => {
       this.record(r);
       onStep?.(r, run);
     };
-    const result = await runScenario(scenario, this.options(wrapped, initialVars));
+    const result = await runScenario(
+      scenario,
+      this.options(wrapped, initialVars, pause, shouldStop)
+    );
     this.history.unshift(result);
     this.history = this.history.slice(0, 50);
     // Prod writes are unlocked for one run only.

@@ -35,6 +35,14 @@ export interface EngineOptions {
   send: SendFn;
   /** Called after each step so a UI can render progressively. */
   onStep?: (result: StepResult, run: RunResult) => void;
+  /**
+   * Awaited after each step. Lets a UI hold the run open so a human can actually read the
+   * request and response before the next call goes out — otherwise a scenario finishes in
+   * a second and all you see is the end state.
+   */
+  pause?: (result: StepResult, run: RunResult) => Promise<void>;
+  /** Checked before each step; true abandons the rest of the run. */
+  shouldStop?: () => boolean;
   /** Return a reason to refuse the request, or null to allow it (prod write guard). */
   guard?: (req: RequestDef) => string | null;
   /** Operator-supplied values, merged over the seeds before the first step. */
@@ -289,6 +297,23 @@ export async function runScenario(scenario: ScenarioDef, opts: EngineOptions): P
   };
 
   for (const step of scenario.steps) {
+    if (opts.shouldStop?.()) {
+      for (const rest of scenario.steps.slice(scenario.steps.indexOf(step))) {
+        const stopped: StepResult = {
+          stepId: rest.id,
+          title: rest.title,
+          note: rest.note,
+          outcome: 'skipped',
+          detail: 'not run — the run was stopped',
+          startedAtIso: new Date().toISOString(),
+        };
+        run.steps.push(stopped);
+        run.skipped++;
+        opts.onStep?.(stopped, run);
+      }
+      break;
+    }
+
     const result = await runStep(step, vars, opts);
     run.steps.push(result);
     if (result.outcome === 'pass') run.passed++;
@@ -296,6 +321,10 @@ export async function runScenario(scenario: ScenarioDef, opts: EngineOptions): P
     else run.skipped++;
 
     opts.onStep?.(result, run);
+    // Hold here if the host wants a human to look before the next request goes out.
+    if (opts.pause) {
+      await opts.pause(result, run);
+    }
 
     if (result.outcome === 'fail' && step.critical) {
       // A critical failure invalidates everything downstream. Record the rest as skipped
