@@ -27,6 +27,8 @@ export class AuthService {
   slots: SlotState[] = [
     { slot: 'mio', label: 'MIO (field user)', token: '' },
     { slot: 'am', label: 'AM (line manager)', token: '' },
+    // DCR (module 20) scopes by level, so the lab needs an RSM to prove the wider scope.
+    { slot: 'rsm', label: 'RSM (regional manager)', token: '' },
     { slot: 'admin', label: 'Admin (web)', token: '' },
   ];
 

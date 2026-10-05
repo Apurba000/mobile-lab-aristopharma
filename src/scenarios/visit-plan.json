@@ -177,7 +177,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "terrId": "data[0].value"
+            "terrId": "data[0].code"
           },
           "expect": {
             "httpStatus": 200,
@@ -197,7 +197,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "rpId": "data[0].value"
+            "rpId": "data[0].id"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -215,7 +215,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "doctorId": "data[0].value"
+            "doctorCode": "data[0].code"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -229,12 +229,12 @@
           "note": "The chamber must belong to the chosen doctor AND sit in one of the employee's territories.",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}",
+            "path": "/api/v1/app/visitplan/chambers?doctorCode={{doctorCode}}",
             "as": "mio",
             "mobileHeader": true
           },
           "capture": {
-            "chamberId": "data[0].value"
+            "chamberId": "data[0].id"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -259,11 +259,11 @@
               "perDate": 1,
               "pool": [
                 {
-                  "reportingPlaceId": "{{rpId}}",
-                  "doctorId": "{{doctorId}}",
-                  "chamberId": "{{chamberId}}"
+                  "chamberId": "{{chamberId}}",
+                  "doctorCode": "{{doctorCode}}"
                 }
-              ]
+              ],
+              "reportingPlaceId": "{{rpId}}"
             }
           },
           "capture": {
@@ -327,7 +327,8 @@
           },
           "expect": {
             "envelopeStatusCode": 200
-          }
+          },
+          "note": "Task 22: approval now runs every configured APPROVAL_PROCESS step in sequence. If the environment has an Admin step after AM, this approve leaves the plan Pending and by-date stays empty until an admin approves from the web portal."
         },
         {
           "id": "by-date",
@@ -432,7 +433,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "terrId": "data[0].value"
+            "terrId": "data[0].code"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -466,7 +467,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "rpId": "data[0].value"
+            "rpId": "data[0].id"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -484,7 +485,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "doctorId": "data[0].value"
+            "doctorCode": "data[0].code"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -497,12 +498,12 @@
           "title": "Chambers",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}",
+            "path": "/api/v1/app/visitplan/chambers?doctorCode={{doctorCode}}",
             "as": "mio",
             "mobileHeader": true
           },
           "capture": {
-            "chamberId": "data[0].value"
+            "chamberId": "data[0].id"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -527,11 +528,11 @@
               "perDate": 1,
               "pool": [
                 {
-                  "reportingPlaceId": "{{rpId}}",
-                  "doctorId": "{{doctorId}}",
-                  "chamberId": "{{chamberId}}"
+                  "chamberId": "{{chamberId}}",
+                  "doctorCode": "{{doctorCode}}"
                 }
-              ]
+              ],
+              "reportingPlaceId": "{{rpId}}"
             }
           },
           "expect": {
@@ -560,11 +561,11 @@
               "perDate": 1,
               "pool": [
                 {
-                  "reportingPlaceId": "{{rpId}}",
-                  "doctorId": "{{doctorId}}",
-                  "chamberId": "{{chamberId}}"
+                  "chamberId": "{{chamberId}}",
+                  "doctorCode": "{{doctorCode}}"
                 }
-              ]
+              ],
+              "reportingPlaceId": "{{rpId}}"
             }
           },
           "expect": {
@@ -675,7 +676,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "terrId": "data[0].value"
+            "terrId": "data[0].code"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -693,15 +694,15 @@
             "mobileHeader": true
           },
           "capture": {
-            "rpId": "data[0].value",
-            "rpId2": "data[1].value"
+            "rpId": "data[0].id",
+            "rpId2": "data[1].id"
           },
           "expect": {
             "envelopeStatusCode": 200,
             "nonEmpty": "data"
           },
           "critical": true,
-          "note": "A second place is captured if one exists - that is what the amend adds."
+          "note": "A second approved place is captured - the amend moves the whole month onto it. The scenario needs at least two approved reporting places in scope."
         },
         {
           "id": "doctors",
@@ -713,7 +714,7 @@
             "mobileHeader": true
           },
           "capture": {
-            "doctorId": "data[0].value"
+            "doctorCode": "data[0].code"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -726,12 +727,12 @@
           "title": "That doctor's chambers",
           "request": {
             "method": "GET",
-            "path": "/api/v1/app/visitplan/chambers?doctorId={{doctorId}}",
+            "path": "/api/v1/app/visitplan/chambers?doctorCode={{doctorCode}}",
             "as": "mio",
             "mobileHeader": true
           },
           "capture": {
-            "chamberId": "data[0].value"
+            "chamberId": "data[0].id"
           },
           "expect": {
             "envelopeStatusCode": 200,
@@ -777,11 +778,11 @@
               "perDate": 1,
               "pool": [
                 {
-                  "reportingPlaceId": "{{rpId}}",
-                  "doctorId": "{{doctorId}}",
-                  "chamberId": "{{chamberId}}"
+                  "chamberId": "{{chamberId}}",
+                  "doctorCode": "{{doctorCode}}"
                 }
-              ]
+              ],
+              "reportingPlaceId": "{{rpId}}"
             }
           },
           "capture": {
@@ -795,7 +796,7 @@
         {
           "id": "approve-seed",
           "title": "Make sure it starts Approved",
-          "note": "An amend is only interesting from an approved plan - that is what returns to Pending.",
+          "note": "An amend is only interesting from an approved plan - that is what returns to Pending. Task 22: approval now runs every configured APPROVAL_PROCESS step in sequence. If the environment has an Admin step after AM, this approve leaves the plan Pending and by-date stays empty until an admin approves from the web portal.",
           "requiresVars": [
             "planId"
           ],
@@ -837,7 +838,7 @@
         {
           "id": "amend",
           "title": "MIO amends — more dates, more visits per date",
-          "note": "A full replacement of the month, not a patch. Three dates with two visits each where the plan started with two dates and one, so both 'add' and 'update' are exercised.",
+          "note": "A full replacement of the month, not a patch. Three dates at a DIFFERENT reporting place than the seed, so the amend is a real change: the seed's two dates at {{rpId}} become three at {{rpId2}}. One reporting place per date is enforced server-side since task 22, so a date cannot stack two places.",
           "requiresVars": [
             "planId"
           ],
@@ -851,19 +852,14 @@
               "year": "{{year}}",
               "month": "{{month}}",
               "dates": 3,
-              "perDate": 2,
+              "perDate": 1,
               "pool": [
                 {
-                  "reportingPlaceId": "{{rpId}}",
-                  "doctorId": "{{doctorId}}",
-                  "chamberId": "{{chamberId}}"
-                },
-                {
-                  "reportingPlaceId": "{{rpId2}}",
-                  "doctorId": "{{doctorId}}",
-                  "chamberId": "{{chamberId}}"
+                  "chamberId": "{{chamberId}}",
+                  "doctorCode": "{{doctorCode}}"
                 }
-              ]
+              ],
+              "reportingPlaceId": "{{rpId2}}"
             }
           },
           "capture": {
@@ -930,7 +926,8 @@
               "data.approvedVersion": "{{amendedVersion}}"
             }
           },
-          "critical": true
+          "critical": true,
+          "note": "Task 22: approval now runs every configured APPROVAL_PROCESS step in sequence. If the environment has an Admin step after AM, this approve leaves the plan Pending and by-date stays empty until an admin approves from the web portal."
         },
         {
           "id": "bydate-updated",
@@ -947,6 +944,282 @@
             "equals": {
               "data.version": "{{amendedVersion}}"
             }
+          }
+        }
+      ]
+    },
+    {
+      "id": "vp.average.am-submit-admin-approve",
+      "module": "visit-plan",
+      "path": "average",
+      "title": "AM submits their own plan, an admin approves it",
+      "description": "The chain an AM's own plan follows. An AM has no line manager inside this module, so their plan routes straight to the Admin step - which has no managerId and therefore never appears in anyone's mobile inbox. The admin half is deliberately decided on the WEB endpoint, because that is the only surface an Admin step can be decided from. Proves the plan stays Pending after submission and only becomes Approved once the admin acts, and that by-date withholds it in between.",
+      "requires": [
+        "am",
+        "admin"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "year",
+          "label": "Plan year",
+          "type": "number",
+          "default": "{{nextMonthYear}}",
+          "hint": "field users can only plan a month later than the current one"
+        },
+        {
+          "name": "month",
+          "label": "Plan month",
+          "type": "select",
+          "default": "{{nextMonth}}",
+          "hint": "one plan per employee + month",
+          "options": [
+            {
+              "value": 1,
+              "label": "January"
+            },
+            {
+              "value": 2,
+              "label": "February"
+            },
+            {
+              "value": 3,
+              "label": "March"
+            },
+            {
+              "value": 4,
+              "label": "April"
+            },
+            {
+              "value": 5,
+              "label": "May"
+            },
+            {
+              "value": 6,
+              "label": "June"
+            },
+            {
+              "value": 7,
+              "label": "July"
+            },
+            {
+              "value": 8,
+              "label": "August"
+            },
+            {
+              "value": 9,
+              "label": "September"
+            },
+            {
+              "value": 10,
+              "label": "October"
+            },
+            {
+              "value": 11,
+              "label": "November"
+            },
+            {
+              "value": 12,
+              "label": "December"
+            }
+          ]
+        }
+      ],
+      "steps": [
+        {
+          "id": "reporting-places",
+          "title": "Approved reporting places across the AM's area",
+          "note": "An AM is scoped to their whole area, not a single territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/reporting-places",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "capture": {
+            "rpId": "data[0].id"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "doctors",
+          "title": "Doctors across the AM's area",
+          "note": "Increment 5: no numeric id here - a doctor is identified by CODE.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/doctors",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorCode": "data[0].code"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "chambers",
+          "title": "That doctor's chambers, by code",
+          "requiresVars": [
+            "doctorCode"
+          ],
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/chambers?doctorCode={{doctorCode}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "capture": {
+            "chamberId": "data[0].id"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "submit",
+          "title": "AM submits their own month",
+          "note": "The reporting place sits on the date (increment 5), not on each visit.",
+          "requiresVars": [
+            "rpId",
+            "doctorCode",
+            "chamberId"
+          ],
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/visitplan",
+            "as": "am",
+            "mobileHeader": true,
+            "bodyFrom": "visitPlanMonth",
+            "bodyArgs": {
+              "year": "{{year}}",
+              "month": "{{month}}",
+              "dates": 2,
+              "perDate": 1,
+              "reportingPlaceId": "{{rpId}}",
+              "pool": [
+                {
+                  "doctorCode": "{{doctorCode}}",
+                  "chamberId": "{{chamberId}}"
+                }
+              ]
+            }
+          },
+          "capture": {
+            "planId": "data.id",
+            "submittedStatus": "data.status",
+            "submittedApproved": "data.approvedVersion"
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "pending-on-admin",
+          "title": "Still Pending — waiting on the Admin step",
+          "note": "Status 2 = Pending. If this comes back 1 the environment has no Admin row configured for this PGroup, and the plan auto-approved instead.",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/{{planId}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.status": 2
+            }
+          }
+        },
+        {
+          "id": "not-in-am-inbox",
+          "title": "An Admin step never reaches a mobile inbox",
+          "note": "The step has no managerId, so it cannot match anyone's pendingForMe query. This is why the admin half has to happen on the web.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan?pendingForMe=true&page=1&pageSize=20",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "bydate-withheld",
+          "title": "by-date withholds a plan that has not finished approving",
+          "note": "approvedVersion is only set by the FINAL step, so nothing reaches the field force yet.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/by-date?date={{firstOfMonth}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "admin-approves",
+          "title": "Admin approves — on the WEB endpoint",
+          "note": "Not /app/. An Admin step has no managerId, so it is decided through the web controller's admin-bypass path, gated by the VisitPlan.Approve permission.",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/visitplan/{{planId}}/approval",
+            "as": "admin",
+            "body": {
+              "status": 1
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "approved",
+          "title": "Now Approved, and approvedVersion is set",
+          "requiresVars": [
+            "planId"
+          ],
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/{{planId}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.status": 1
+            }
+          }
+        },
+        {
+          "id": "bydate-served",
+          "title": "by-date now serves the month",
+          "note": "The whole point of the chain: only a fully approved plan reaches the field force.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/visitplan/by-date?date={{firstOfMonth}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 200
           }
         }
       ]
@@ -1135,9 +1408,9 @@
               "dates": [
                 {
                   "visitDate": "{{firstOfMonth}}",
+                  "reportingPlaceId": 1,
                   "visits": [
                     {
-                      "reportingPlaceId": 1,
                       "doctorId": 1,
                       "chamberId": 1
                     }
@@ -1185,9 +1458,9 @@
               "dates": [
                 {
                   "visitDate": "2020-01-15",
+                  "reportingPlaceId": 1,
                   "visits": [
                     {
-                      "reportingPlaceId": 1,
                       "doctorId": 1,
                       "chamberId": 1
                     }
@@ -1215,9 +1488,9 @@
               "dates": [
                 {
                   "visitDate": "{{firstOfMonth}}",
+                  "reportingPlaceId": 999999999,
                   "visits": [
                     {
-                      "reportingPlaceId": 999999999,
                       "doctorId": 1,
                       "chamberId": 1
                     }
@@ -1228,6 +1501,68 @@
           },
           "expect": {
             "httpStatus": 200,
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "400-legacy-per-visit-place",
+          "title": "400 — reporting place still on the visit (pre-increment-5 shape)",
+          "note": "Increment 5 moved reportingPlaceId onto the date. Two places on one date is no longer expressible through this API at all, so what is worth proving is that the OLD shape is refused with a message naming the move - not a confusing \"reporting place 0 is not an approved place\".",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/visitplan",
+            "as": "mio",
+            "mobileHeader": true,
+            "body": {
+              "planYear": "{{year}}",
+              "planMonth": "{{month}}",
+              "dates": [
+                {
+                  "visitDate": "{{firstOfMonth}}",
+                  "visits": [
+                    {
+                      "reportingPlaceId": 1,
+                      "doctorId": 1,
+                      "chamberId": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "ValidationError",
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "400-date-without-place",
+          "title": "400 — date carries visits but no reportingPlaceId",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/visitplan",
+            "as": "mio",
+            "mobileHeader": true,
+            "body": {
+              "planYear": "{{year}}",
+              "planMonth": "{{month}}",
+              "dates": [
+                {
+                  "visitDate": "{{firstOfMonth}}",
+                  "visits": [
+                    {
+                      "doctorId": 1,
+                      "chamberId": 1
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatus": "ValidationError",
             "envelopeStatusCode": 400
           }
         },

@@ -64,3 +64,28 @@ a Node CLI can run the same files in CI later without a rewrite.
 
 Drop a new file in `src/scenarios/`, add it to `src/scenarios/index.json`. No TypeScript
 changes needed unless the module needs a new payload builder.
+
+## Promotional product and DCR (task 33)
+
+The app has one promo endpoint, `GET /api/v1/app/dcr/promo-products`. Promo is issued inside DCR create, update and delete. `promo-product.json` covers the list; `dcr.json` covers issuing.
+
+| Scenario | Proves |
+| --- | --- |
+| `promo.happy.disbursed-month` | a disbursed month returns items; every item has issued <= disbursed <= allocated; `isDisbursed` true |
+| `promo.average.not-disbursed-empty` | a month the depot has not disbursed returns `[]`, even with HQ allocation |
+| `promo.average.no-allocation-empty` | Jan 2099 and month 13 return 200 `[]`, not an error |
+| `promo.average.manager-sees-area` | AM and RSM read the list for a territory they cover |
+| `promo.worst.access-matrix` | 401 no/bad token; 403 admin, foreign or empty territory, another officer's call; 404 unknown call |
+| `promo.worst.depot-admin-no-app` | a `DEPOT…` user is refused at app login (401), before any OTP is sent |
+| `dcr.average.issue-capped-by-disbursed` | issue the whole remaining quantity; details show the month totals with remaining 0; one more unit is refused (400) |
+| `dcr.worst.promo-not-disbursed` | promo on a call in an undisbursed month is refused (400); the same call without promo is saved |
+
+Two assertion types were added for these: `expect.empty` (a list must be `[]`) and `expect.lte` (`[left, right]` pairs; `[*]` on both sides checks every item).
+
+**Data needed:**
+- one month the MIO's depot **has** disbursed;
+- one month with allocation it **has not**;
+- a depot admin user name, e.g. `DEPOT001`;
+- for the manager scenario, a territory under the AM/RSM.
+
+`dcr.average.issue-capped-by-disbursed` uses up one item's whole remaining stock, so run it on dev/UAT only.

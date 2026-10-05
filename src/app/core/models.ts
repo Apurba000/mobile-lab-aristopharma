@@ -3,7 +3,7 @@
  * it is framework-free so the same JSON can be run by a Node CLI in CI later.
  */
 
-export type TokenSlot = 'mio' | 'am' | 'admin' | 'none' | 'garbage';
+export type TokenSlot = 'mio' | 'am' | 'rsm' | 'admin' | 'none' | 'garbage';
 export type ScenarioPath = 'happy' | 'average' | 'worst';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
@@ -41,6 +41,13 @@ export interface ExpectDef {
    * — "the plan came back to Pending" — rather than merely that nothing errored.
    */
   equals?: Record<string, string | number>;
+  /** Path that must be an empty array (or absent), e.g. "data" for a list that must come back []. */
+  empty?: string;
+  /**
+   * Pairs [left, right] where left must be <= right. Each side is a response path or a number.
+   * "[*]" on both sides compares item by item, e.g. ["data[*].issuedQty", "data[*].disbursedQty"].
+   */
+  lte?: [string, string][];
 }
 
 export interface StepDef {

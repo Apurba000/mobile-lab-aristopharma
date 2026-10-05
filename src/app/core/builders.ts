@@ -25,20 +25,28 @@ const visitPlanMonth: BodyBuilder = (args, vars: Vars) => {
   const dayCount = Math.min(dates, daysInMonth);
   const take = Math.min(perDate, Math.max(pool.length, 1));
 
+  // Increment 5: the reporting place belongs to the DATE. Taken from an explicit arg, or
+  // from the pool for scenarios that still describe it per entry.
+  const datePlace = args['reportingPlaceId'] ?? pool[0]?.reportingPlaceId;
+
   const out: any[] = [];
   for (let d = 1; d <= dayCount; d++) {
     const visits: any[] = [];
     for (let i = 0; i < take && i < pool.length; i++) {
       const c = pool[i];
-      visits.push({
-        reportingPlaceId: Number(c.reportingPlaceId),
-        doctorId: Number(c.doctorId),
-        chamberId: Number(c.chamberId),
-      });
+      const visit: any = { chamberId: Number(c.chamberId) };
+      // Doctors are identified by code since increment 4; the lookup no longer returns an id.
+      if (c.doctorCode != null && `${c.doctorCode}` !== '') {
+        visit.doctorCode = `${c.doctorCode}`;
+      } else {
+        visit.doctorId = Number(c.doctorId);
+      }
+      visits.push(visit);
     }
     if (visits.length) {
       out.push({
         visitDate: `${year}-${`${month}`.padStart(2, '0')}-${`${d}`.padStart(2, '0')}`,
+        reportingPlaceId: Number(datePlace),
         visits,
       });
     }
@@ -76,7 +84,58 @@ const reportingPlaceRequest: BodyBuilder = (args, vars: Vars) => ({
   terrId: String(args['terrId'] ?? vars['terrId'] ?? ''),
 });
 
+/**
+ * A DCR create/edit body (module 20). Every part except date, doctor, chamber and the GPS fix is
+ * optional, so the scenarios can switch one piece at a time: promo on/off, a colleague or none, a
+ * prescription image with or without products.
+ */
+const dcrCall: BodyBuilder = (args, vars: Vars) => {
+  const num = (v: unknown) => (v === undefined || v === null || v === '' ? undefined : Number(v));
+  const body: any = {
+    dcrDate: String(args['dcrDate'] ?? vars['today'] ?? ''),
+    doctorId: num(args['doctorId'] ?? vars['doctorId']),
+    chamberId: num(args['chamberId'] ?? vars['chamberId']),
+    promo: [],
+    visitedWith: [],
+    rxProducts: [],
+  };
+
+  // Omitted on purpose by the "no GPS" case, which must be refused (B32).
+  const lat = args['latitude'] ?? vars['latitude'] ?? 23.8103;
+  const lng = args['longitude'] ?? vars['longitude'] ?? 90.4125;
+  if (args['omitGps'] !== true) {
+    body.latitude = num(lat);
+    body.longitude = num(lng);
+  }
+
+  const promoCode = args['promoCode'] ?? vars['promoCode'];
+  const promoQty = num(args['promoQty']);
+  if (promoCode && promoQty !== undefined) {
+    body.promo.push({ promoCode: String(promoCode), qty: promoQty });
+    // The duplicate case sends the same item twice, which must be a 400 rather than a sum (B18).
+    if (args['duplicatePromo'] === true) body.promo.push({ promoCode: String(promoCode), qty: promoQty });
+  }
+
+  const colleague = num(args['visitedWithEmpId']);
+  if (colleague !== undefined) {
+    body.visitedWith.push({ empId: colleague });
+    if (args['duplicateColleague'] === true) body.visitedWith.push({ empId: colleague });
+  }
+
+  const rxImageBase64 = args['rxImageBase64'] ?? vars['rxImageBase64'];
+  if (rxImageBase64) body.rxImageBase64 = String(rxImageBase64);
+
+  const pCode = args['pCode'] ?? vars['pCode'];
+  if (pCode) {
+    body.rxProducts.push({ pCode: String(pCode) });
+    if (args['duplicateProduct'] === true) body.rxProducts.push({ pCode: String(pCode) });
+  }
+
+  return body;
+};
+
 export const BUILDERS: Record<string, BodyBuilder> = {
+  dcrCall,
   visitPlanMonth,
   visitPool,
   reportingPlaceRequest,

@@ -1,0 +1,556 @@
+{
+  "module": "promo",
+  "label": "19 - Promotional Product (mobile)",
+  "surface": [
+    {
+      "endpoint": "GET /api/v1/app/dcr/promo-products",
+      "expect": [
+        200,
+        401,
+        403,
+        404
+      ],
+      "note": "the only promo endpoint for the app. [] until the depot disburses the month; then allocated/disbursed/issued/remaining per item"
+    },
+    {
+      "endpoint": "POST /api/v1/app/auth/login",
+      "expect": [
+        401
+      ],
+      "note": "only the depot-admin refusal is exercised here"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "promo.happy.disbursed-month",
+      "module": "promo",
+      "path": "happy",
+      "title": "Disbursed month: targeted items with allocated, disbursed and issued",
+      "description": "Once the depot has disbursed the month, the territory gets its targeted items. Every item must satisfy issued <= disbursed <= allocated and remaining <= disbursed.",
+      "requires": [
+        "mio"
+      ],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the token slot used - the doctor sync takes it as a parameter"
+        },
+        {
+          "name": "disbYear",
+          "label": "Disbursed year",
+          "type": "number",
+          "default": "{{year}}",
+          "hint": "a month the depot HAS disbursed for my territory"
+        },
+        {
+          "name": "disbMonth",
+          "label": "Disbursed month",
+          "type": "number",
+          "default": "{{month}}"
+        }
+      ],
+      "steps": [
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "list",
+          "title": "Promo list for the disbursed month",
+          "note": "Non-empty, every item flagged isDisbursed, quantities consistent (task 33 R10).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{disbYear}}&month={{disbMonth}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data",
+            "equals": {
+              "data[0].isDisbursed": "true"
+            },
+            "lte": [
+              [
+                "data[*].issuedQty",
+                "data[*].disbursedQty"
+              ],
+              [
+                "data[*].disbursedQty",
+                "data[*].allocatedQty"
+              ],
+              [
+                "data[*].remainingQty",
+                "data[*].disbursedQty"
+              ]
+            ]
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "allocated": "data[0].allocatedQty",
+            "disbursed": "data[0].disbursedQty",
+            "issued": "data[0].issuedQty"
+          }
+        }
+      ]
+    },
+    {
+      "id": "promo.average.not-disbursed-empty",
+      "module": "promo",
+      "path": "average",
+      "title": "Month not disbursed by the depot: the list is empty",
+      "description": "Even with an HQ allocation, nothing is visible to field users until the depot disburses the month. Pick a month that has allocation but no disbursement.",
+      "requires": [
+        "mio"
+      ],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the token slot used - the doctor sync takes it as a parameter"
+        },
+        {
+          "name": "undYear",
+          "label": "Not-disbursed year",
+          "type": "number",
+          "default": "{{nextMonthYear}}",
+          "hint": "a month with allocation that the depot has NOT disbursed yet"
+        },
+        {
+          "name": "undMonth",
+          "label": "Not-disbursed month",
+          "type": "number",
+          "default": "{{nextMonth}}"
+        }
+      ],
+      "steps": [
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "list-undisbursed",
+          "title": "Promo list for a month the depot has not disbursed",
+          "note": "Must be [] - quantities the depot set in advance are not visible yet (task 33, 2026-09-30).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{undYear}}&month={{undMonth}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "empty": "data"
+          }
+        }
+      ]
+    },
+    {
+      "id": "promo.average.no-allocation-empty",
+      "module": "promo",
+      "path": "average",
+      "title": "Month with no allocation at all: empty, not an error",
+      "description": "A far-future month and an out-of-range month both answer 200 with [] - a call with no promo is normal (B19).",
+      "requires": [
+        "mio"
+      ],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the token slot used - the doctor sync takes it as a parameter"
+        }
+      ],
+      "steps": [
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "far-future",
+          "title": "January 2099",
+          "note": "No allocation and no disbursement exist.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year=2099&month=1",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "empty": "data"
+          }
+        },
+        {
+          "id": "month-13",
+          "title": "Month 13",
+          "note": "Not validated by the API; nothing can be disbursed for it, so [].",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month=13",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "empty": "data"
+          }
+        }
+      ]
+    },
+    {
+      "id": "promo.average.manager-sees-area",
+      "module": "promo",
+      "path": "average",
+      "title": "AM and RSM can read promo for a territory they cover",
+      "description": "Managers file calls in their field officers' territories, so they read the same list. Use a territory under the AM/RSM and a disbursed month.",
+      "requires": [
+        "am",
+        "rsm"
+      ],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "coveredTerrId",
+          "label": "Territory under this AM and RSM",
+          "type": "text",
+          "hint": "e.g. an MIO territory in the AM's area"
+        },
+        {
+          "name": "disbYear",
+          "label": "Disbursed year",
+          "type": "number",
+          "default": "{{year}}",
+          "hint": "a month the depot HAS disbursed for my territory"
+        },
+        {
+          "name": "disbMonth",
+          "label": "Disbursed month",
+          "type": "number",
+          "default": "{{month}}"
+        }
+      ],
+      "steps": [
+        {
+          "id": "am-list",
+          "title": "AM reads the promo list",
+          "note": "Same rules as the MIO: [] until disbursed.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{coveredTerrId}}&year={{disbYear}}&month={{disbMonth}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "lte": [
+              [
+                "data[*].issuedQty",
+                "data[*].disbursedQty"
+              ],
+              [
+                "data[*].disbursedQty",
+                "data[*].allocatedQty"
+              ],
+              [
+                "data[*].remainingQty",
+                "data[*].disbursedQty"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "rsm-list",
+          "title": "RSM reads the promo list",
+          "note": "Same rules as the MIO.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{coveredTerrId}}&year={{disbYear}}&month={{disbMonth}}",
+            "as": "rsm",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "lte": [
+              [
+                "data[*].issuedQty",
+                "data[*].disbursedQty"
+              ],
+              [
+                "data[*].disbursedQty",
+                "data[*].allocatedQty"
+              ],
+              [
+                "data[*].remainingQty",
+                "data[*].disbursedQty"
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "promo.worst.access-matrix",
+      "module": "promo",
+      "path": "worst",
+      "title": "Who is refused on the promo list",
+      "description": "No token, a bad token, admin, a territory outside mine, an empty territory, and another officer's call id.",
+      "requires": [
+        "mio",
+        "admin"
+      ],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the token slot used - the doctor sync takes it as a parameter"
+        },
+        {
+          "name": "foreignTerrId",
+          "label": "A territory NOT under this MIO",
+          "type": "text"
+        },
+        {
+          "name": "foreignDcrId",
+          "label": "Another officer's DCR id",
+          "type": "number",
+          "hint": "optional - the step is skipped when empty"
+        }
+      ],
+      "steps": [
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "no-token",
+          "title": "No token",
+          "note": "",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "none",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "garbage-token",
+          "title": "Invalid token",
+          "note": "",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "garbage",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "admin",
+          "title": "Admin token",
+          "note": "Admins are not field officers (B6a).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "admin",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          }
+        },
+        {
+          "id": "foreign-terr",
+          "title": "A territory outside mine",
+          "note": "Must name the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{foreignTerrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          },
+          "requiresVars": [
+            "foreignTerrId"
+          ]
+        },
+        {
+          "id": "empty-terr",
+          "title": "No territory",
+          "note": "An empty terrId is outside every scope.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId=&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          }
+        },
+        {
+          "id": "unknown-dcr",
+          "title": "Edit view with a call id that does not exist",
+          "note": "",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}&dcrId={{unknownId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 404
+          }
+        },
+        {
+          "id": "foreign-dcr",
+          "title": "Edit view with another officer's call",
+          "note": "Held quantities of someone else's call must not leak.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}&dcrId={{foreignDcrId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          },
+          "requiresVars": [
+            "foreignDcrId"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "promo.worst.depot-admin-no-app",
+      "module": "promo",
+      "path": "worst",
+      "title": "A depot admin cannot sign in to the mobile app",
+      "description": "Depot admins work in the web panel only (task 33 R13). Refused before any OTP SMS is sent.",
+      "requires": [],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "depotAdminUser",
+          "label": "Depot admin user name",
+          "type": "text",
+          "default": "DEPOT001"
+        }
+      ],
+      "steps": [
+        {
+          "id": "app-login",
+          "title": "App login as the depot admin",
+          "note": "Expect \"Depot admin users cannot sign in to the mobile app.\"",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/auth/login",
+            "as": "none",
+            "mobileHeader": true,
+            "body": {
+              "userName": "{{depotAdminUser}}",
+              "fcmToken": "mobile-lab"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 401
+          }
+        }
+      ]
+    }
+  ]
+}

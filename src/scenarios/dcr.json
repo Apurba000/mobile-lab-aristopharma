@@ -1,0 +1,1683 @@
+{
+  "module": "dcr",
+  "label": "20 \u00b7 DCR (Doctor Call Report)",
+  "surface": [
+    {
+      "endpoint": "GET /api/v1/app/dcr/config",
+      "expect": [
+        200,
+        401,
+        403
+      ],
+      "note": "called once after login; an empty businessUnits list means the user cannot report"
+    },
+    {
+      "endpoint": "GET /api/v1/app/dcr/territories",
+      "expect": [
+        200,
+        401,
+        403
+      ],
+      "note": "areas + territories with pGroup; MIO may skip it"
+    },
+    {
+      "endpoint": "GET /api/v1/app/dcr/promo-products",
+      "expect": [
+        200,
+        401,
+        403,
+        404
+      ],
+      "note": "terrId + year + month; dcrId on edit. [] until the depot disburses the month (task 33)"
+    },
+    {
+      "endpoint": "GET /api/v1/app/dcr/visited-with",
+      "expect": [
+        200,
+        401,
+        403
+      ]
+    },
+    {
+      "endpoint": "GET /api/v1/app/dcr/rx-products",
+      "expect": [
+        200,
+        401,
+        403
+      ],
+      "note": "every product, any division; search by code or brand name"
+    },
+    {
+      "endpoint": "GET /api/v1/app/dcr",
+      "expect": [
+        200,
+        401,
+        403
+      ],
+      "note": "always mine"
+    },
+    {
+      "endpoint": "GET /api/v1/app/dcr/{id}",
+      "expect": [
+        200,
+        401,
+        403,
+        404
+      ]
+    },
+    {
+      "endpoint": "POST /api/v1/app/dcr",
+      "expect": [
+        200,
+        400,
+        401,
+        403
+      ],
+      "note": "prescription photo inline as rxImageBase64; required when rxProducts is not empty; response carries rxImageUrl (full URL)"
+    },
+    {
+      "endpoint": "PUT /api/v1/app/dcr/{id}",
+      "expect": [
+        200,
+        400,
+        401,
+        403,
+        404
+      ],
+      "note": "prescription photo inline as rxImageBase64; required when rxProducts is not empty; response carries rxImageUrl (full URL)"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "dcr.happy.file-a-call",
+      "module": "dcr",
+      "path": "happy",
+      "title": "File a doctor call with promo, a colleague and a prescription",
+      "description": "The whole chain an MIO walks: window, territory, promo, colleagues, products, submit, then read it back from history and detail.",
+      "requires": [
+        "mio"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the MIO slot in the auth panel - the doctor sync takes it as a parameter"
+        },
+        {
+          "name": "dcrDate",
+          "label": "Call date",
+          "type": "text",
+          "default": "{{today}}",
+          "hint": "must fall inside the window /config returned"
+        },
+        {
+          "name": "promoQty",
+          "label": "Promo quantity",
+          "type": "number",
+          "default": 1,
+          "hint": "must be 1..remaining"
+        },
+        {
+          "name": "rxImageBase64",
+          "label": "Prescription photo (Base64)",
+          "type": "text",
+          "default": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+          "hint": "JPEG or PNG as Base64 (a data: prefix is fine). The default is a 1x1 PNG."
+        }
+      ],
+      "steps": [
+        {
+          "id": "config",
+          "title": "My reporting window",
+          "note": "Loaded once after login (B13). fromDate/toDate are ready to use - the app never does the month arithmetic itself.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "windowFrom": "data.businessUnits[0].fromDate",
+            "windowTo": "data.businessUnits[0].toDate",
+            "pGroup": "data.businessUnits[0].pGroup"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.businessUnits"
+          },
+          "critical": true
+        },
+        {
+          "id": "territories",
+          "title": "Areas and territories I cover",
+          "note": "MIO sees one territory; AM its area; RSM every area (B7d).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "level": "data.level"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.areas"
+          },
+          "critical": true
+        },
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "promo-list",
+          "title": "Promotional stock for this territory and month",
+          "note": "Live stock for the call date month. An empty list is normal and must not block the call (B19).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "colleagues",
+          "title": "Colleagues I can name",
+          "note": "Both directions - managers above and officers below, minus me (B23/B24).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/visited-with",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "colleagueEmpId": "data[0].empId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "rx-products",
+          "title": "Prescription products (any division)",
+          "note": "Every product; no division filter since 2026-10-01.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/rx-products?search=",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "pCode": "data[0].pCode"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "create",
+          "title": "Submit the call",
+          "note": "Promo is deducted in the same transaction as the call (B20).",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{dcrDate}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": "{{promoQty}}",
+              "visitedWithEmpId": "{{colleagueEmpId}}",
+              "pCode": "{{pCode}}",
+              "rxImageBase64": "{{rxImageBase64}}"
+            }
+          },
+          "capture": {
+            "dcrId": "data.id"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "detail",
+          "title": "Read the call back",
+          "note": "Everything recorded should come back: promo with names, colleague with their real level (B25), products, and the submit GPS fix.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/{{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.id": "{{dcrId}}",
+              "data.canEdit": "true"
+            },
+            "lte": [
+              [
+                "data.promo[*].issuedQty",
+                "data.promo[*].disbursedQty"
+              ],
+              [
+                "data.promo[*].disbursedQty",
+                "data.promo[*].allocatedQty"
+              ]
+            ],
+            "nonEmpty": "data.rxImageUrl"
+          }
+        },
+        {
+          "id": "history",
+          "title": "It appears in my history",
+          "note": "Always mine - there is no team view (B8).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr?year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.items"
+          }
+        },
+        {
+          "id": "promo-after",
+          "title": "Promotional stock for this territory and month",
+          "note": "Live stock for the call date month. An empty list is normal and must not block the call (B19).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        }
+      ]
+    },
+    {
+      "id": "dcr.average.edit-returns-promo",
+      "module": "dcr",
+      "path": "average",
+      "title": "Edit a call: old promo returns, new promo is taken",
+      "description": "An edit reverses every old line and applies the new ones in one transaction (B21). Proves the balance nets out and that the edit list shows the call own lines.",
+      "requires": [
+        "mio"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the MIO slot in the auth panel - the doctor sync takes it as a parameter"
+        }
+      ],
+      "steps": [
+        {
+          "id": "config",
+          "title": "My reporting window",
+          "note": "Loaded once after login (B13). fromDate/toDate are ready to use - the app never does the month arithmetic itself.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "windowFrom": "data.businessUnits[0].fromDate",
+            "windowTo": "data.businessUnits[0].toDate",
+            "pGroup": "data.businessUnits[0].pGroup"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.businessUnits"
+          },
+          "critical": true
+        },
+        {
+          "id": "territories",
+          "title": "Areas and territories I cover",
+          "note": "MIO sees one territory; AM its area; RSM every area (B7d).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "level": "data.level"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.areas"
+          },
+          "critical": true
+        },
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "promo-list",
+          "title": "Promotional stock for this territory and month",
+          "note": "Live stock for the call date month. An empty list is normal and must not block the call (B19).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "create",
+          "title": "File a call holding promo",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": 2
+            }
+          },
+          "capture": {
+            "dcrId": "data.id"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "promo-edit-list",
+          "title": "Promotional stock for this territory and month",
+          "note": "Edit-aware list (B21a): the quantities this call already holds read as available again in remainingQty, and an item it holds stays listed even at 0 or inactive.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}&dcrId={{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "edit-lower",
+          "title": "Lower the quantity to 1",
+          "note": "The 2 already held are returned first, then 1 is taken - so the register should end one unit lower than before the call, not three.",
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/dcr/{{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": 1
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "edit-remove-promo",
+          "title": "Remove the promo line entirely",
+          "note": "All stock should come back; the call itself stays valid with no promo (B19).",
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/dcr/{{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "promo-final",
+          "title": "Promotional stock for this territory and month",
+          "note": "Live stock for the call date month. An empty list is normal and must not block the call (B19).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "edit-future",
+          "title": "Try to move the call into the future",
+          "note": "A call records a visit that happened (B11b).",
+          "request": {
+            "method": "PUT",
+            "path": "/api/v1/app/dcr/{{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{nextMonthYear}}-12-31",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "dcr.average.duplicate-same-day",
+      "module": "dcr",
+      "path": "average",
+      "title": "The same doctor twice in one day is legitimate",
+      "description": "B2 removed the uniqueness rule, so a second identical call must save. The cost is that a double-tap on Submit files two and deducts promo twice - the app has to guard it, and only admin can delete the extra.",
+      "requires": [
+        "mio"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the MIO slot in the auth panel - the doctor sync takes it as a parameter"
+        }
+      ],
+      "steps": [
+        {
+          "id": "config",
+          "title": "My reporting window",
+          "note": "Loaded once after login (B13). fromDate/toDate are ready to use - the app never does the month arithmetic itself.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "windowFrom": "data.businessUnits[0].fromDate",
+            "windowTo": "data.businessUnits[0].toDate",
+            "pGroup": "data.businessUnits[0].pGroup"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.businessUnits"
+          },
+          "critical": true
+        },
+        {
+          "id": "territories",
+          "title": "Areas and territories I cover",
+          "note": "MIO sees one territory; AM its area; RSM every area (B7d).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "level": "data.level"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.areas"
+          },
+          "critical": true
+        },
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "first",
+          "title": "File the call",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "capture": {
+            "firstId": "data.id"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          },
+          "critical": true
+        },
+        {
+          "id": "second",
+          "title": "File it again, identically",
+          "note": "Must also succeed - a morning and an evening call are two reports (B2).",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "capture": {
+            "secondId": "data.id"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "both-listed",
+          "title": "Both appear, told apart by submission time",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr?year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.items"
+          }
+        }
+      ]
+    },
+    {
+      "id": "dcr.worst.access-matrix",
+      "module": "dcr",
+      "path": "worst",
+      "title": "Who is refused: no token, bad token, admin, another officer",
+      "description": "DCR runs its own field-role check against TERR_LIST rather than trusting the shared level helper, which returns MIO for anyone it cannot find (B6a). These are the cases that helper would have let through.",
+      "requires": [
+        "mio",
+        "am",
+        "admin"
+      ],
+      "writes": false,
+      "inputs": [
+        {
+          "name": "foreignDcrId",
+          "label": "Another officer's call id",
+          "type": "number",
+          "hint": "file one as the MIO first and paste its id - proves an AM cannot reach it (B8). Leave blank to skip that step"
+        }
+      ],
+      "steps": [
+        {
+          "id": "no-token",
+          "title": "No token",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "none",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "garbage-token",
+          "title": "Invalid token",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "garbage",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 401
+          }
+        },
+        {
+          "id": "admin-config",
+          "title": "Admin token on /config",
+          "note": "An admin is not a field officer. The portal register is their surface, not this.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "admin",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          }
+        },
+        {
+          "id": "admin-create",
+          "title": "Admin token on create",
+          "note": "The gate is per request, not per screen.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "admin",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": 1,
+              "chamberId": 1
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          }
+        },
+        {
+          "id": "unknown-id",
+          "title": "A call id that does not exist",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/{{unknownId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 404
+          }
+        },
+        {
+          "id": "am-reads-mio-call",
+          "title": "Another officer's call by id",
+          "note": "Set foreignDcrId to an MIO call id before running. A manager has no team view anywhere (B8).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/{{foreignDcrId}}",
+            "as": "am",
+            "mobileHeader": true
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          },
+          "requiresVars": [
+            "foreignDcrId"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dcr.worst.validation-matrix",
+      "module": "dcr",
+      "path": "worst",
+      "title": "Every refusal, and each one has to name the thing involved",
+      "description": "Window bounds, GPS, duplicates, stock, scope and business-unit guards. A bare \"Validation failed\" is a defect - read the message on each failure.",
+      "requires": [
+        "mio"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the MIO slot in the auth panel - also used for the \"myself as a colleague\" case"
+        },
+        {
+          "name": "otherDoctorId",
+          "label": "A different doctor id",
+          "type": "number",
+          "hint": "any doctor other than the one the sync picked - proves the doctor/chamber pairing is checked. Blank skips it"
+        },
+        {
+          "name": "foreignDoctorId",
+          "label": "Doctor outside my territories",
+          "type": "number",
+          "hint": "blank skips the out-of-scope case"
+        },
+        {
+          "name": "foreignChamberId",
+          "label": "Chamber outside my territories",
+          "type": "number",
+          "hint": "a chamber in a territory this officer does not cover - must be refused by the server (B7b). Blank skips it"
+        },
+        {
+          "name": "outsiderEmpId",
+          "label": "Employee outside my territories",
+          "type": "number",
+          "hint": "must not be nameable as a colleague (B24). Blank skips it"
+        }
+      ],
+      "steps": [
+        {
+          "id": "config",
+          "title": "My reporting window",
+          "note": "Loaded once after login (B13). fromDate/toDate are ready to use - the app never does the month arithmetic itself.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "windowFrom": "data.businessUnits[0].fromDate",
+            "windowTo": "data.businessUnits[0].toDate",
+            "pGroup": "data.businessUnits[0].pGroup"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.businessUnits"
+          },
+          "critical": true
+        },
+        {
+          "id": "territories",
+          "title": "Areas and territories I cover",
+          "note": "MIO sees one territory; AM its area; RSM every area (B7d).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "level": "data.level"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.areas"
+          },
+          "critical": true
+        },
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "promo-list",
+          "title": "Promotional stock for this territory and month",
+          "note": "Live stock for the call date month. An empty list is normal and must not block the call (B19).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        },
+        {
+          "id": "future-date",
+          "title": "Dated tomorrow",
+          "note": "B11b - the window bounds the past only.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{nextMonthYear}}-12-31",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "too-old",
+          "title": "Dated far before the window",
+          "note": "Should name the earliest reportable date, not just refuse.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "2020-01-15",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "no-gps",
+          "title": "No location",
+          "note": "B32 - capturing where the call happened is the point of the record.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "omitGps": true
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "unknown-chamber",
+          "title": "A chamber that does not exist",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{unknownId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          }
+        },
+        {
+          "id": "doctor-chamber-mismatch",
+          "title": "Chamber that belongs to another doctor",
+          "note": "Set otherDoctorId before running.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{otherDoctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "otherDoctorId"
+          ]
+        },
+        {
+          "id": "foreign-chamber",
+          "title": "A chamber outside my territories",
+          "note": "Set foreignChamberId to a chamber in a territory this officer does not cover. Refused by the server, not merely hidden in the app (B7b).",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{foreignDoctorId}}",
+              "chamberId": "{{foreignChamberId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 403
+          },
+          "requiresVars": [
+            "foreignChamberId"
+          ]
+        },
+        {
+          "id": "promo-over-stock",
+          "title": "More promo than remains",
+          "note": "Must name the item, and nothing may be saved or deducted (B20).",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": 999999
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "promoCode"
+          ]
+        },
+        {
+          "id": "promo-zero",
+          "title": "Promo quantity of zero",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": 0
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "promoCode"
+          ]
+        },
+        {
+          "id": "promo-duplicate",
+          "title": "The same promo item twice",
+          "note": "B18 - a duplicate is an error, never a sum.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": 1,
+              "duplicatePromo": true
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "promoCode"
+          ]
+        },
+        {
+          "id": "colleague-outside",
+          "title": "A colleague outside my territories",
+          "note": "Set outsiderEmpId to an employee this officer does not cover (B24).",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "visitedWithEmpId": "{{outsiderEmpId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "outsiderEmpId"
+          ]
+        },
+        {
+          "id": "colleague-self",
+          "title": "Myself as a colleague",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "visitedWithEmpId": "{{myEmpId}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "myEmpId"
+          ]
+        },
+        {
+          "id": "product-duplicate",
+          "title": "The same prescription product twice",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "pCode": "{{pCode}}",
+              "duplicateProduct": true
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "pCode"
+          ]
+        },
+        {
+          "id": "rx-without-photo",
+          "title": "Prescription product without a photo",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "pCode": "{{pCode}}"
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "pCode"
+          ],
+          "note": "rxImageBase64 is required whenever rxProducts is not empty."
+        },
+        {
+          "id": "rx-not-an-image",
+          "title": "Prescription photo that is not an image",
+          "note": "rxImageBase64 must decode to a JPEG or PNG.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{today}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "rxImageBase64": "SGVsbG8gd29ybGQ="
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "dcr.average.issue-capped-by-disbursed",
+      "module": "dcr",
+      "path": "average",
+      "title": "Issue exactly what the depot disbursed, then one more is refused",
+      "description": "The cap is the disbursed quantity (task 33 R10). Uses the whole remaining stock of one item - run on dev/UAT only.",
+      "requires": [
+        "mio"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the token slot used - the doctor sync takes it as a parameter"
+        },
+        {
+          "name": "dcrDate",
+          "label": "Call date (a disbursed month)",
+          "type": "text",
+          "default": "{{today}}"
+        },
+        {
+          "name": "year",
+          "label": "Year of the call date",
+          "type": "number",
+          "default": "{{year}}"
+        },
+        {
+          "name": "month",
+          "label": "Month of the call date",
+          "type": "number",
+          "default": "{{month}}",
+          "hint": "must match the call date - the promo list is read for this month"
+        }
+      ],
+      "steps": [
+        {
+          "id": "config",
+          "title": "My reporting window",
+          "note": "Loaded once after login (B13). fromDate/toDate are ready to use - the app never does the month arithmetic itself.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "windowFrom": "data.businessUnits[0].fromDate",
+            "windowTo": "data.businessUnits[0].toDate",
+            "pGroup": "data.businessUnits[0].pGroup"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.businessUnits"
+          },
+          "critical": true
+        },
+        {
+          "id": "territories",
+          "title": "Areas and territories I cover",
+          "note": "MIO sees one territory; AM its area; RSM every area (B7d).",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/territories",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "level": "data.level"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.areas"
+          },
+          "critical": true
+        },
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "promo-list",
+          "title": "Promo list for the call month",
+          "note": "Must be non-empty: the depot has disbursed this month.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data",
+            "lte": [
+              [
+                "data[*].issuedQty",
+                "data[*].disbursedQty"
+              ],
+              [
+                "data[*].disbursedQty",
+                "data[*].allocatedQty"
+              ],
+              [
+                "data[*].remainingQty",
+                "data[*].disbursedQty"
+              ]
+            ]
+          },
+          "capture": {
+            "promoCode": "data[0].promoCode",
+            "promoRemaining": "data[0].remainingQty"
+          }
+        },
+        {
+          "id": "take-all",
+          "title": "Issue the whole remaining quantity",
+          "note": "disbursed - issued is exactly what may still go out.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{dcrDate}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": "{{promoRemaining}}"
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          },
+          "capture": {
+            "dcrId": "data.id"
+          },
+          "requiresVars": [
+            "promoCode"
+          ],
+          "critical": true
+        },
+        {
+          "id": "detail-totals",
+          "title": "Call details carry the month totals",
+          "note": "qty = issued on this call; allocated/disbursed/issued/remaining = the territory totals. Remaining is now 0.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/{{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "equals": {
+              "data.promo[0].promoCode": "{{promoCode}}",
+              "data.promo[0].qty": "{{promoRemaining}}",
+              "data.promo[0].remainingQty": "0"
+            },
+            "lte": [
+              [
+                "data.promo[*].issuedQty",
+                "data.promo[*].disbursedQty"
+              ],
+              [
+                "data.promo[*].disbursedQty",
+                "data.promo[*].allocatedQty"
+              ]
+            ]
+          },
+          "requiresVars": [
+            "dcrId"
+          ]
+        },
+        {
+          "id": "one-more",
+          "title": "One more unit is refused",
+          "note": "Nothing left of the disbursed quantity; must name the item.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{dcrDate}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{promoCode}}",
+              "promoQty": 1
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "dcrId"
+          ]
+        },
+        {
+          "id": "edit-view",
+          "title": "Edit view gives this call its quantity back",
+          "note": "remainingQty includes what the call holds; the item stays listed.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}&dcrId={{dcrId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data"
+          },
+          "requiresVars": [
+            "dcrId"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dcr.worst.promo-not-disbursed",
+      "module": "dcr",
+      "path": "worst",
+      "title": "Promo on a call in a month the depot has not disbursed is refused",
+      "description": "The API refuses with \"...have not been disbursed by the depot...\" and saves nothing. Needs a call date inside the reporting window, in a month with allocation but no disbursement (e.g. this month, before the depot disburses).",
+      "requires": [
+        "mio"
+      ],
+      "writes": true,
+      "inputs": [
+        {
+          "name": "myEmpId",
+          "label": "My employee id",
+          "type": "number",
+          "hint": "the empId on the token slot used - the doctor sync takes it as a parameter"
+        },
+        {
+          "name": "dcrDate",
+          "label": "Call date (month NOT disbursed)",
+          "type": "text",
+          "default": "{{today}}"
+        },
+        {
+          "name": "year",
+          "label": "Year of the call date",
+          "type": "number",
+          "default": "{{year}}"
+        },
+        {
+          "name": "month",
+          "label": "Month of the call date",
+          "type": "number",
+          "default": "{{month}}",
+          "hint": "must match the call date - the promo list is read for this month"
+        },
+        {
+          "name": "allocatedCode",
+          "label": "A promo code allocated to my territory that month",
+          "type": "text",
+          "hint": "from /promo-product/details on the admin site"
+        }
+      ],
+      "steps": [
+        {
+          "id": "config",
+          "title": "My reporting window",
+          "note": "Loaded once after login (B13). fromDate/toDate are ready to use - the app never does the month arithmetic itself.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/config",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "windowFrom": "data.businessUnits[0].fromDate",
+            "windowTo": "data.businessUnits[0].toDate",
+            "pGroup": "data.businessUnits[0].pGroup"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.businessUnits"
+          },
+          "critical": true
+        },
+        {
+          "id": "sync-doctors",
+          "title": "Doctors and chambers from the existing sync",
+          "note": "DCR adds no doctor endpoint (B7a) - it reads the master the app already syncs at login. terrId comes from the chamber, so the promo list and the call always agree on the territory.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/sync/doctor?empId={{myEmpId}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "capture": {
+            "doctorId": "data.doctors[0].id",
+            "chamberId": "data.doctors[0].chambers[0].id",
+            "terrId": "data.doctors[0].chambers[0].terrId"
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "nonEmpty": "data.doctors"
+          },
+          "critical": true
+        },
+        {
+          "id": "promo-list",
+          "title": "The list is empty for this month",
+          "note": "Confirms the precondition: the depot has not disbursed.",
+          "request": {
+            "method": "GET",
+            "path": "/api/v1/app/dcr/promo-products?terrId={{terrId}}&year={{year}}&month={{month}}",
+            "as": "mio",
+            "mobileHeader": true
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200,
+            "empty": "data"
+          }
+        },
+        {
+          "id": "with-promo",
+          "title": "File the call with promo",
+          "note": "Must be 400 naming the depot; no call is saved.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{dcrDate}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}",
+              "promoCode": "{{allocatedCode}}",
+              "promoQty": 1
+            }
+          },
+          "expect": {
+            "envelopeStatusCode": 400
+          },
+          "requiresVars": [
+            "allocatedCode"
+          ]
+        },
+        {
+          "id": "without-promo",
+          "title": "The same call without promo is fine",
+          "note": "Promo is optional (B19); only the promo line was the problem.",
+          "request": {
+            "method": "POST",
+            "path": "/api/v1/app/dcr",
+            "as": "mio",
+            "mobileHeader": true,
+            "bodyFrom": "dcrCall",
+            "bodyArgs": {
+              "dcrDate": "{{dcrDate}}",
+              "doctorId": "{{doctorId}}",
+              "chamberId": "{{chamberId}}"
+            }
+          },
+          "expect": {
+            "httpStatus": 200,
+            "envelopeStatusCode": 200
+          }
+        }
+      ]
+    }
+  ]
+}

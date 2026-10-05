@@ -208,7 +208,8 @@
           "expect": {
             "httpStatus": 200,
             "envelopeStatusCode": 200
-          }
+          },
+          "note": "Task 22: reporting-place approval now runs every configured APPROVAL_PROCESS step in sequence, so with more than one step configured this approve leaves the request Pending and it is NOT materialised until the last approver accepts."
         },
         {
           "id": "shows-approved",
@@ -293,7 +294,8 @@
           },
           "expect": {
             "envelopeStatusCode": 200
-          }
+          },
+          "note": "Task 22: reporting-place approval now runs every configured APPROVAL_PROCESS step in sequence, so with more than one step configured this approve leaves the request Pending and it is NOT materialised until the last approver accepts."
         },
         {
           "id": "edit",

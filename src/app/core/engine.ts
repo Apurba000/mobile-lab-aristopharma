@@ -228,6 +228,17 @@ export function assertExpectations(
       problems.push(`expected ${expect.nonEmpty} to be non-empty`);
     }
   }
+  if (expect.empty) {
+    const v = readPath(res.parsed, expect.empty);
+    const isEmpty = v === undefined || v === null || (Array.isArray(v) && v.length === 0);
+    if (!isEmpty) {
+      const count = Array.isArray(v) ? `${v.length} item(s)` : `${v}`;
+      problems.push(`expected ${expect.empty} to be empty, got ${count}`);
+    }
+  }
+  for (const [left, right] of expect.lte ?? []) {
+    problems.push(...checkLte(res.parsed, left, right));
+  }
   for (const [path, want] of Object.entries(expect.equals ?? {})) {
     const got = readPath(res.parsed, path);
     // String comparison: Oracle decimals arrive as 2 or "2" depending on the field.
@@ -239,6 +250,36 @@ export function assertExpectations(
   return problems.length
     ? { ok: false, detail: `${seen.join('; ')} (${problems.join(', ')})` }
     : { ok: true, detail: seen.join('; ') };
+}
+
+function sideValue(parsed: unknown, side: string): number | undefined {
+  const n = Number(side);
+  if (side.trim() !== '' && !Number.isNaN(n)) return n;
+  const v = readPath(parsed, side);
+  if (v === undefined || v === null || `${v}`.trim() === '') return undefined;
+  const num = Number(v);
+  return Number.isNaN(num) ? undefined : num;
+}
+
+function checkLte(parsed: unknown, left: string, right: string): string[] {
+  if (left.includes('[*]') && right.includes('[*]')) {
+    const listPath = left.slice(0, left.indexOf('[*]'));
+    const list = readPath(parsed, listPath);
+    if (!Array.isArray(list)) return [`expected ${listPath} to be a list`];
+    const problems: string[] = [];
+    list.forEach((_, i) => {
+      const l = left.replace('[*]', `[${i}]`);
+      const r = right.replace('[*]', `[${i}]`);
+      problems.push(...checkLte(parsed, l, r));
+    });
+    return problems;
+  }
+  const l = sideValue(parsed, left);
+  const r = sideValue(parsed, right);
+  if (l === undefined || r === undefined) {
+    return [`expected ${left} <= ${right}, but ${l === undefined ? left : right} is missing`];
+  }
+  return l <= r ? [] : [`expected ${left} (${l}) <= ${right} (${r})`];
 }
 
 // ------------------------------------------------------------------- runner
